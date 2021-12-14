@@ -52,6 +52,7 @@ public:
   struct Selection {
     Selection(const SymbolIndex *Index, ParsedAST &AST, unsigned RangeBegin,
               unsigned RangeEnd, SelectionTree ASTSelection,
+              const ThreadsafeFS &TFS,
               llvm::vfs::FileSystem *VFS);
     /// The text of the active document.
     llvm::StringRef Code;
@@ -68,10 +69,12 @@ public:
     unsigned SelectionEnd;
     /// The AST nodes that were selected.
     SelectionTree ASTSelection;
+    const ThreadsafeFS *TFS = nullptr;
     /// File system used to access source code (for cross-file tweaks).
     /// This is only populated when applying a tweak, not during prepare.
     llvm::vfs::FileSystem *FS = nullptr;
     // FIXME: provide a way to get sources and ASTs for other files.
+    OverlayCDB *CDB = nullptr;
   };
 
   struct Effect {

@@ -61,10 +61,11 @@ getAllTweaks(const FeatureModuleSet *Modules) {
 
 Tweak::Selection::Selection(const SymbolIndex *Index, ParsedAST &AST,
                             unsigned RangeBegin, unsigned RangeEnd,
-                            SelectionTree ASTSelection,
+                            SelectionTree ASTSelection, const ThreadsafeFS &TFS,
                             llvm::vfs::FileSystem *FS)
     : Index(Index), AST(&AST), SelectionBegin(RangeBegin),
-      SelectionEnd(RangeEnd), ASTSelection(std::move(ASTSelection)), FS(FS) {
+      SelectionEnd(RangeEnd), ASTSelection(std::move(ASTSelection)), TFS(&TFS),
+      FS(FS) {
   auto &SM = AST.getSourceManager();
   Code = SM.getBufferData(SM.getMainFileID());
   Cursor = SM.getComposedLoc(SM.getMainFileID(), RangeBegin);

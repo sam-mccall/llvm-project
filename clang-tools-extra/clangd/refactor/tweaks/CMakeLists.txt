@@ -14,6 +14,7 @@ set(LLVM_LINK_COMPONENTS
 add_clang_library(clangDaemonTweaks OBJECT
   AddUsing.cpp
   AnnotateHighlightings.cpp
+  AdjustCompileCommand.cpp
   DumpAST.cpp
   DefineInline.cpp
   DefineOutline.cpp

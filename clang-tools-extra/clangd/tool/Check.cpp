@@ -222,7 +222,7 @@ public:
       auto Tree = SelectionTree::createRight(AST->getASTContext(),
                                              AST->getTokens(), Start, End);
       Tweak::Selection Selection(&Index, *AST, Start, End, std::move(Tree),
-                                 nullptr);
+                                 *Inputs.TFS, nullptr);
       // FS is only populated when applying a tweak, not during prepare as
       // prepare should not do any I/O to be fast.
       auto Tweaks =

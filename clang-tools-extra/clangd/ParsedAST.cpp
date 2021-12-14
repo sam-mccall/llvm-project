@@ -522,10 +522,11 @@ ParsedAST::build(llvm::StringRef Filename, const ParseInputs &Inputs,
       Diags->insert(Diags->end(), D.begin(), D.end());
     }
   }
-  ParsedAST Result(Inputs.Version, std::move(Preamble), std::move(Clang),
-                   std::move(Action), std::move(Tokens), std::move(Macros),
-                   std::move(Marks), std::move(ParsedDecls), std::move(Diags),
-                   std::move(Includes), std::move(CanonIncludes));
+  ParsedAST Result(Inputs.Version, Inputs.CompileCommand, std::move(Preamble),
+                   std::move(Clang), std::move(Action), std::move(Tokens),
+                   std::move(Macros), std::move(Marks), std::move(ParsedDecls),
+                   std::move(Diags), std::move(Includes),
+                   std::move(CanonIncludes));
   if (Result.Diags) {
     auto UnusedHeadersDiags =
         issueUnusedIncludesDiagnostics(Result, Inputs.Contents);
@@ -615,6 +616,7 @@ const CanonicalIncludes &ParsedAST::getCanonicalIncludes() const {
 }
 
 ParsedAST::ParsedAST(llvm::StringRef Version,
+                     const tooling::CompileCommand &CompileCommand,
                      std::shared_ptr<const PreambleData> Preamble,
                      std::unique_ptr<CompilerInstance> Clang,
                      std::unique_ptr<FrontendAction> Action,
@@ -623,7 +625,8 @@ ParsedAST::ParsedAST(llvm::StringRef Version,
                      std::vector<Decl *> LocalTopLevelDecls,
                      llvm::Optional<std::vector<Diag>> Diags,
                      IncludeStructure Includes, CanonicalIncludes CanonIncludes)
-    : Version(Version), Preamble(std::move(Preamble)), Clang(std::move(Clang)),
+    : Version(Version), CompileCommand(CompileCommand),
+      Preamble(std::move(Preamble)), Clang(std::move(Clang)),
       Action(std::move(Action)), Tokens(std::move(Tokens)),
       Macros(std::move(Macros)), Marks(std::move(Marks)),
       Diags(std::move(Diags)),

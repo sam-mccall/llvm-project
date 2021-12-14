@@ -83,6 +83,10 @@ public:
     return getASTContext().getLangOpts();
   }
 
+  const tooling::CompileCommand &getCompileCommand() const {
+    return CompileCommand;
+  }
+
   /// This function returns top-level decls present in the main file of the AST.
   /// The result does not include the decls that come from the preamble.
   /// (These should be const, but RecursiveASTVisitor requires Decl*).
@@ -120,6 +124,7 @@ public:
 
 private:
   ParsedAST(llvm::StringRef Version,
+            const tooling::CompileCommand &CompileCommand,
             std::shared_ptr<const PreambleData> Preamble,
             std::unique_ptr<CompilerInstance> Clang,
             std::unique_ptr<FrontendAction> Action, syntax::TokenBuffer Tokens,
@@ -129,6 +134,7 @@ private:
             CanonicalIncludes CanonIncludes);
 
   std::string Version;
+  tooling::CompileCommand CompileCommand;
   // In-memory preambles must outlive the AST, it is important that this member
   // goes before Clang and Action.
   std::shared_ptr<const PreambleData> Preamble;
