@@ -9,6 +9,7 @@
 #include "AST.h"
 
 #include "SourceCode.h"
+#include "support/Logger.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/Decl.h"
@@ -24,20 +25,25 @@
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Analysis/CFG.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Index/USRGeneration.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include <algorithm>
 #include <iterator>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace clang {
@@ -1017,6 +1023,84 @@ resolveForwardingParameters(const FunctionDecl *D, unsigned MaxDepth) {
 
 bool isExpandedFromParameterPack(const ParmVarDecl *D) {
   return getUnderylingPackType(D) != nullptr;
+}
+
+llvm::Expected<std::pair<unsigned, unsigned>>
+countDynamicUses(const Stmt &Root, ASTContext &Ctx,
+                 llvm::function_ref<bool(const Stmt &)> Predicate) {
+  constexpr unsigned Infinity = -1;
+  CFG::BuildOptions Opts;
+  Opts.setAllAlwaysAdd();
+  auto Graph = CFG::buildCFG(nullptr, const_cast<Stmt *>(&Root), &Ctx, Opts);
+  if (!Graph)
+    return error("Can't create CFG");
+  // Count matching 'red' statements in each BB.
+  std::vector<unsigned> Matches(Graph->getNumBlockIDs());
+  for (const auto *Block : *Graph)
+    for (const auto &Elt : *Block)
+      if (auto S = Elt.getAs<CFGStmt>())
+        if (Predicate(*S->getStmt()))
+          ++Matches[Block->getBlockID()];
+
+  // Ugh, CFGBlock's traits expose unreachable successors as nullptr.
+  // scc_iterator doesn't expect null nodes, so filter those out.
+  static auto Filter = [](const CFGBlock *AB) { return AB != nullptr; };
+  struct FilteredCFGTraits : public llvm::GraphTraits<::clang::CFG *> {
+    using ChildIteratorType =
+        llvm::filter_iterator<CFGBlock::AdjacentBlock *, decltype(Filter)>;
+    static auto children(NodeRef N) {
+      return llvm::make_filter_range(N->succs(), Filter);
+    }
+    static auto child_begin(NodeRef N) { return children(N).begin(); }
+    static auto child_end(NodeRef N) { return children(N).end(); }
+  };
+  // All the blocks in a SCC have the same max reachable red nodes.
+  // If the SCC contains matches and a loop: infinity
+  // Otherwise, #local matches + max(reachable succ).
+  std::vector<unsigned> MaxReachable(Graph->getNumBlockIDs());
+  for (auto It = llvm::scc_iterator<clang::CFG *, FilteredCFGTraits>::begin(
+           Graph.get());
+       !It.isAtEnd(); ++It) {
+    unsigned LocalRed = 0, SuccRed = 0;
+    for (const auto *Block : *It) {
+      LocalRed += Matches[Block->getBlockID()];
+      for (const auto &Successor : Block->succs())
+          if (const auto *Succ = Successor.getReachableBlock())
+            SuccRed = std::max(SuccRed, MaxReachable[Succ->getBlockID()]);
+    }
+    if (LocalRed > 0 && It.hasCycle())
+      LocalRed = Infinity;
+    unsigned Total = llvm::SaturatingAdd(LocalRed, SuccRed);
+    for (const auto *Block : *It)
+      MaxReachable[Block->getBlockID()] = Total;
+  }
+
+  // Min is simpler, we just want the shortest path from entry to exit.
+  // Use Dijkstra's algorithm, starting at entry.
+  std::vector<unsigned> MinReachable(Graph->getNumBlockIDs(), Infinity);
+  MinReachable[Graph->getEntry().getBlockID()] = 0;
+  std::vector<bool> Seen(Graph->getNumBlockIDs());
+  for(;;) {
+    // Choose closest node to consider for the path.
+    const CFGBlock * Closest = nullptr;
+    for (auto *Block : *Graph) {
+      if (!Seen[Block->getBlockID()] &&
+          (!Closest || MinReachable[Block->getBlockID()] <
+                           MinReachable[Closest->getBlockID()]))
+        Closest = Block;
+    }
+    if (!Closest)
+      break;
+    // Update nodes whose paths are improved by this one.
+    Seen[Closest->getBlockID()] = true;
+    for (const auto& Successor : Closest->succs())
+      if (const auto *Succ = Successor.getReachableBlock())
+        MinReachable[Succ->getBlockID()] = std::min(
+            MinReachable[Succ->getBlockID()],
+            MinReachable[Closest->getBlockID()] + Matches[Succ->getBlockID()]);
+  }
+  return std::make_pair(MinReachable[Graph->getExit().getBlockID()],
+                        MaxReachable[Graph->getEntry().getBlockID()]);
 }
 
 } // namespace clangd

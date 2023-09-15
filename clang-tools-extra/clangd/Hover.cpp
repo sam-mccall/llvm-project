@@ -55,6 +55,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/Format.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -625,6 +626,26 @@ HoverInfo getHoverContents(const NamedDecl *D, const PrintingPolicy &PP,
   enhanceFromIndex(HI, *CommentD, Index);
   if (HI.Documentation.empty())
     HI.Documentation = synthesizeDocumentation(D);
+
+  auto OrInf = [](unsigned X) {
+    return X == unsigned(-1) ? "infinity" : llvm::to_string(X);
+  };
+  if (const auto *PVD = llvm::dyn_cast<ParmVarDecl>(D)) {
+    if (const auto *FD = llvm::dyn_cast<FunctionDecl>(PVD->getDeclContext()))
+      if (FD->hasBody()) {
+        if (auto Range =
+                countDynamicUses(*FD->getBody(), Ctx, [&](const Stmt &S) {
+                  if (const auto *DRE = llvm::dyn_cast<DeclRefExpr>(&S))
+                    return DRE->getDecl() == PVD;
+                  return false;
+                }))
+          HI.Documentation = llvm::formatv("Uses: {0}-{1}", OrInf(Range->first),
+                                           OrInf(Range->second));
+        else
+          HI.Documentation =
+              "Can't compute uses: " + llvm::toString(Range.takeError());
+      }
+  }
 
   HI.Kind = index::getSymbolInfo(D).Kind;
 

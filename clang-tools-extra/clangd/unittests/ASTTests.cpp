@@ -658,6 +658,35 @@ TEST(ClangdAST, PreferredIncludeDirective) {
             Symbol::IncludeDirective::Import);
 }
 
+TEST(ClangdAST, CountDynamicUses) {
+  constexpr unsigned Infinity = -1;
+  for (const auto &Test :
+       std::vector<std::pair<llvm::StringRef, std::pair<unsigned, unsigned>>>{
+           {"", {0, 0}},
+           {"x;", {1, 1}},
+           {"x;x;", {2, 2}},
+           {"x+x;", {2, 2}},
+           {"x;if(cond) x;x;", {2, 3}},
+           {"x;if(false) x;x;", {2, 2}},
+           {"while(cond) x;", {0, Infinity}},
+           {"do { x; } while (cond);", {1, Infinity}},
+           {"do { x; } while (false);", {1, 1}},
+       }) {
+    SCOPED_TRACE(Test.first);
+    auto AST = TestTU::withCode(
+                   ("void foo(int x, bool cond){" + Test.first + "}").str())
+                   .build();
+    auto Uses = countDynamicUses(
+        *cast<FunctionDecl>(findDecl(AST, "foo")).getBody(),
+        AST.getASTContext(), [](const Stmt &S) {
+          auto *DRE = llvm::dyn_cast<DeclRefExpr>(&S);
+          return DRE && DRE->getFoundDecl()->getNameAsString() == "x";
+        });
+    ASSERT_FALSE(!Uses) << llvm::toString(Uses.takeError());
+    EXPECT_EQ(*Uses, Test.second);
+  }
+}
+
 } // namespace
 } // namespace clangd
 } // namespace clang

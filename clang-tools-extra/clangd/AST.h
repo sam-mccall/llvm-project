@@ -22,9 +22,12 @@
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Lex/MacroInfo.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Error.h"
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace clang {
@@ -249,6 +252,12 @@ resolveForwardingParameters(const FunctionDecl *D, unsigned MaxDepth = 10);
 /// whose type is a bare type parameter pack (e.g. `Args...`), or a
 /// reference to one (e.g. `Args&...` or `Args&&...`).
 bool isExpandedFromParameterPack(const ParmVarDecl *D);
+
+/// Counts times statements matching Predicate will be run within Root.
+/// Returns a range [min, max] where unsigned(-1) is infinity (hack hack).
+llvm::Expected<std::pair<unsigned, unsigned>>
+countDynamicUses(const Stmt &Root, ASTContext &,
+                 llvm::function_ref<bool(const Stmt &)> Predicate);
 
 } // namespace clangd
 } // namespace clang
