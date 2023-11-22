@@ -277,29 +277,54 @@ private:
 
 /// Wrapper of type source information for a type with
 /// non-trivial direct qualifiers.
-///
-/// Currently, we intentionally do not provide source location for
-/// type qualifiers.
 class QualifiedTypeLoc : public TypeLoc {
 public:
-  SourceRange getLocalSourceRange() const { return {}; }
+  // The token that protrudes furthest to the left from the unqualified type.
+  //
+  //    const volatile int
+  //    ~~~~~ <-- FirstQualifierLocBeforeType
+  //
+  //    int volatile const
+  //    FirstQualifierLocBeforeType is not set, all qualifiers are on the right.
+  SourceLocation getFirstQualifierLocBeforeType() const {
+    return getLocalData()->FirstBeforeType;
+  }
+  SourceLocation getLastQualifierLocAfterType() const {
+    return getLocalData()->LastAfterType;
+  }
 
+  void setQualifierLocations(SourceLocation FirstBeforeType,
+                             SourceLocation LastAfterType) {
+    getLocalData()->FirstBeforeType = FirstBeforeType;
+    getLocalData()->LastAfterType = LastAfterType;
+  }
+
+  SourceRange getLocalSourceRange() const {
+    auto &Data = *getLocalData();
+    return {Data.FirstBeforeType.isValid() ? Data.FirstBeforeType
+                                           : Data.LastAfterType,
+            Data.LastAfterType.isValid() ? Data.LastAfterType
+                                         : Data.FirstBeforeType};
+  }
+
+    
   UnqualTypeLoc getUnqualifiedLoc() const {
     unsigned align =
         TypeLoc::getLocalAlignmentForType(QualType(getTypePtr(), 0));
     auto dataInt = reinterpret_cast<uintptr_t>(Data);
+    dataInt += getLocalDataSize();
     dataInt = llvm::alignTo(dataInt, align);
     return UnqualTypeLoc(getTypePtr(), reinterpret_cast<void*>(dataInt));
   }
 
-  /// Initializes the local data of this type source info block to
-  /// provide no information.
+  /// Initializes the local data of this type source info.
   void initializeLocal(ASTContext &Context, SourceLocation Loc) {
-    // do nothing
+    getLocalData()->FirstBeforeType = Loc;
+    getLocalData()->LastAfterType = Loc;
   }
 
-  void copyLocal(TypeLoc other) {
-    // do nothing
+  void copyLocal(QualifiedTypeLoc Other) {
+    memcpy(getLocalData(), Other.getLocalData(), sizeof(QualifiedTypeLocInfo));
   }
 
   TypeLoc getNextTypeLoc() const {
@@ -309,19 +334,51 @@ public:
   /// Returns the size of the type source info data block that is
   /// specific to this type.
   unsigned getLocalDataSize() const {
-    // In fact, we don't currently preserve any location information
-    // for qualifiers.
-    return 0;
+    return sizeof(QualifiedTypeLocInfo);
   }
 
   /// Returns the alignment of the type source info data block that is
   /// specific to this type.
   unsigned getLocalDataAlignment() const {
-    // We don't preserve any location information.
-    return 1;
+    return alignof(QualifiedTypeLocInfo);
   }
 
 private:
+  struct QualifiedTypeLocInfo {
+    // The locations stored here are a little surprising. Considerations:
+    // - there may be multiple qualifiers
+    // - they can appear before/after the type being modified
+    // - to implement getSourceRange(), we need to know whether they're before
+    //   or after the type, without using the SourceManager to compare
+    // - we also need to implement getLocalSourceRange()
+    // - we want the storage to be compact
+    //
+    // So we store:
+    //   const int
+    //   ^first     last=null
+    //
+    //   int const
+    //       ^last  first=null
+    //
+    //   const int volatile
+    //   ^first    ^last
+    //
+    //   const volatile int
+    //   ^first              last=null
+    //
+    // In the last, getLocalSourceRange() is incorrect, covering const only.
+    // Multiple qualifiers, and using the *local* range, are both somewhat rare.
+    SourceLocation FirstBeforeType;
+    SourceLocation LastAfterType;
+  };
+
+  QualifiedTypeLocInfo *getLocalData() {
+    return reinterpret_cast<QualifiedTypeLocInfo *>(Data);
+  }
+  const QualifiedTypeLocInfo *getLocalData() const {
+    return reinterpret_cast<const QualifiedTypeLocInfo *>(Data);
+  }
+
   friend class TypeLoc;
 
   static bool isKind(const TypeLoc &TL) {

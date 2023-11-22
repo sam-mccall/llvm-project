@@ -992,6 +992,15 @@ bool DeclSpec::SetTypeQual(TQ T, SourceLocation Loc, const char *&PrevSpec,
 bool DeclSpec::SetTypeQual(TQ T, SourceLocation Loc) {
   TypeQualifiers |= T;
 
+  // We assume we see components in order: if there's no type specifier yet,
+  // then the modifier is lexically before it.
+  if (hasTypeSpecifier()) {
+    LastTQAfterType = Loc;
+  } else {
+    if (FirstTQBeforeType.isInvalid())
+      FirstTQBeforeType = Loc;
+  }
+
   switch (T) {
   case TQ_unspecified: break;
   case TQ_const:    TQ_constLoc = Loc; return false;

@@ -289,7 +289,8 @@ public:
 } // namespace
 
 void TypeLocWriter::VisitQualifiedTypeLoc(QualifiedTypeLoc TL) {
-  // nothing to do
+  Record.writeSourceLocation(TL.getFirstQualifierLocBeforeType());
+  Record.writeSourceLocation(TL.getLastQualifierLocAfterType());
 }
 
 void TypeLocWriter::VisitBuiltinTypeLoc(BuiltinTypeLoc TL) {

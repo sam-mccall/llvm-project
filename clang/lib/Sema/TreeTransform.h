@@ -4950,7 +4950,11 @@ TreeTransform<Derived>::TransformTypeWithDeducedTST(TypeSourceInfo *DI) {
     Result = getDerived().RebuildQualifiedType(Result, QTL);
     if (Result.isNull())
       return nullptr;
-    TLB.TypeWasModifiedSafely(Result);
+    if (Result.hasLocalQualifiers()) {
+      QualifiedTypeLoc NewTL = TLB.push<QualifiedTypeLoc>(Result);
+      NewTL.setQualifierLocations(QTL.getFirstQualifierLocBeforeType(),
+                                  QTL.getLastQualifierLocAfterType());
+    }
   }
 
   return TLB.getTypeSourceInfo(SemaRef.Context, Result);
@@ -4982,10 +4986,12 @@ TreeTransform<Derived>::TransformQualifiedType(TypeLocBuilder &TLB,
   if (Result.isNull())
     return QualType();
 
-  // RebuildQualifiedType might have updated the type, but not in a way
-  // that invalidates the TypeLoc. (There's no location information for
-  // qualifiers.)
-  TLB.TypeWasModifiedSafely(Result);
+  // Qualifiers may be dropped by instantiation in some cases.
+  if (Result.hasLocalQualifiers()) {
+    QualifiedTypeLoc NewTL = TLB.push<QualifiedTypeLoc>(Result);
+    NewTL.setQualifierLocations(T.getFirstQualifierLocBeforeType(),
+                                T.getLastQualifierLocAfterType());
+  }
 
   return Result;
 }

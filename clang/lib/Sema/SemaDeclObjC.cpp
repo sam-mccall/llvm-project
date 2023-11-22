@@ -1608,13 +1608,11 @@ void Sema::actOnObjCTypeArgsOrProtocolQualifiers(
     // add the '*'.
     if (type->getAs<ObjCInterfaceType>()) {
       SourceLocation starLoc = getLocForEndOfToken(loc);
-      D.AddTypeInfo(DeclaratorChunk::getPointer(/*TypeQuals=*/0, starLoc,
-                                                SourceLocation(),
-                                                SourceLocation(),
-                                                SourceLocation(),
-                                                SourceLocation(),
-                                                SourceLocation()),
-                                                starLoc);
+      D.AddTypeInfo(DeclaratorChunk::getPointer(
+                        /*TypeQuals=*/0, starLoc, SourceLocation(),
+                        SourceLocation(), SourceLocation(), SourceLocation(),
+                        SourceLocation(), SourceLocation()),
+                    starLoc);
 
       // Diagnose the missing '*'.
       Diag(loc, diag::err_objc_type_arg_missing_star)

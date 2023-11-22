@@ -6759,7 +6759,9 @@ public:
 } // namespace clang
 
 void TypeLocReader::VisitQualifiedTypeLoc(QualifiedTypeLoc TL) {
-  // nothing to do
+  SourceLocation First = Reader.readSourceLocation();
+  SourceLocation Last = Reader.readSourceLocation();
+  TL.setQualifierLocations(First, Last);
 }
 
 void TypeLocReader::VisitBuiltinTypeLoc(BuiltinTypeLoc TL) {

@@ -219,6 +219,46 @@ TEST(TypeLoc, IntRange) {
   EXPECT_TRUE(Verifier.match("int a;", typeLoc()));
 }
 
+class LocalRangeVerifier : public RangeVerifier<TypeLoc> {
+  SourceRange getRange(const TypeLoc &Node) override {
+    return Node.getLocalSourceRange();
+  }
+};
+
+TEST(TypeLoc, QualifierRange) {
+  LocalRangeVerifier Local;
+  RangeVerifier<TypeLoc> Full;
+
+  Local.expectRange(1, 1, 1, 1);
+  EXPECT_TRUE(Local.match("const int a = 0;", qualifiedTypeLoc()));
+  Full.expectRange(1, 1, 1, 7);
+  EXPECT_TRUE(Full.match("const int a = 0;", qualifiedTypeLoc()));
+
+  Local.expectRange(1, 5, 1, 5);
+  EXPECT_TRUE(Local.match("int const a = 0;", qualifiedTypeLoc()));
+  Full.expectRange(1, 1, 1, 5);
+  EXPECT_TRUE(Full.match("int const a = 0;", qualifiedTypeLoc()));
+
+  // Local should cover both qualifiers, not just the first.
+  // This is a tradeoff of accuracy vs AST size.
+  Local.expectRange(1, 1, 1, 1);
+  EXPECT_TRUE(Local.match("const volatile int a = 0;", qualifiedTypeLoc()));
+  EXPECT_TRUE(Local.match("volatile const int a = 0;", qualifiedTypeLoc()));
+  Full.expectRange(1, 1, 1, 16  );
+  EXPECT_TRUE(Full.match("const volatile int a = 0;", qualifiedTypeLoc()));
+  EXPECT_TRUE(Full.match("volatile const int a = 0;", qualifiedTypeLoc()));
+
+  Local.expectRange(1, 1, 1, 14);
+  EXPECT_TRUE(Local.match("volatile int const a = 0;", qualifiedTypeLoc()));
+  Full.expectRange(1, 1, 1, 14);
+  EXPECT_TRUE(Full.match("volatile int const a = 0;", qualifiedTypeLoc()));
+
+  Local.expectRange(1, 8, 1, 8);
+  EXPECT_TRUE(Local.match("int *f(const int*);", qualifiedTypeLoc()));
+  Full.expectRange(1, 8, 1, 14);
+  EXPECT_TRUE(Full.match("int *f(const int*);", qualifiedTypeLoc()));
+}
+
 TEST(TypeLoc, LongRange) {
   RangeVerifier<TypeLoc> Verifier;
   Verifier.expectRange(1, 1, 1, 1);

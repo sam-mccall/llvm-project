@@ -215,8 +215,15 @@ SourceLocation TypeLoc::getBeginLoc() const {
     case DependentSizedArray:
     case IncompleteArray:
     case VariableArray:
-      // FIXME: Currently QualifiedTypeLoc does not have a source range
+      Cur = Cur.getNextTypeLoc();
+      continue;
     case Qualified:
+      if (Cur.castAs<QualifiedTypeLoc>()
+              .getFirstQualifierLocBeforeType()
+              .isValid()) {
+        LeftMost = Cur;
+        break;
+      }
       Cur = Cur.getNextTypeLoc();
       continue;
     default:
@@ -274,6 +281,14 @@ SourceLocation TypeLoc::getEndLoc() const {
         Last = Cur;
       break;
     case Qualified:
+      if (Cur.castAs<QualifiedTypeLoc>()
+              .getLastQualifierLocAfterType()
+              .isValid()) {
+        Last = Cur;
+        break;
+      }
+      Cur = Cur.getNextTypeLoc();
+      continue;
     case Elaborated:
       break;
     }

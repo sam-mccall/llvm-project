@@ -6242,6 +6242,8 @@ namespace {
     }
     void VisitQualifiedTypeLoc(QualifiedTypeLoc TL) {
       Visit(TL.getUnqualifiedLoc());
+      TL.setQualifierLocations(DS.getFirstQualifierBeforeType(),
+                               DS.getLastQualifierAfterType());
     }
     // Allow to fill pointee's type locations, e.g.,
     //   int __attr * __attr * __attr *p;
@@ -6650,12 +6652,12 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
   Declarator &D = State.getDeclarator();
 
   TypeSourceInfo *TInfo = S.Context.CreateTypeSourceInfo(T);
-  UnqualTypeLoc CurrTL = TInfo->getTypeLoc().getUnqualifiedLoc();
+  TypeLoc CurrTL = TInfo->getTypeLoc();
 
   // Handle parameter packs whose type is a pack expansion.
   if (isa<PackExpansionType>(T)) {
     CurrTL.castAs<PackExpansionTypeLoc>().setEllipsisLoc(D.getEllipsisLoc());
-    CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+    CurrTL = CurrTL.getNextTypeLoc();
   }
 
   for (unsigned i = 0, e = D.getNumTypeObjects(); i != e; ++i) {
@@ -6669,7 +6671,7 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
     // declarator chunk.
     if (AtomicTypeLoc ATL = CurrTL.getAs<AtomicTypeLoc>()) {
       fillAtomicQualLoc(ATL, D.getTypeObject(i));
-      CurrTL = ATL.getValueLoc().getUnqualifiedLoc();
+      CurrTL = ATL.getValueLoc();
     }
 
     bool HasDesugaredTypeLoc = true;
@@ -6679,27 +6681,27 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
         auto TL = CurrTL.castAs<MacroQualifiedTypeLoc>();
         TL.setExpansionLoc(
             State.getExpansionLocForMacroQualifiedType(TL.getTypePtr()));
-        CurrTL = TL.getNextTypeLoc().getUnqualifiedLoc();
+        CurrTL = TL.getNextTypeLoc();
         break;
       }
 
       case TypeLoc::Attributed: {
         auto TL = CurrTL.castAs<AttributedTypeLoc>();
         fillAttributedTypeLoc(TL, State);
-        CurrTL = TL.getNextTypeLoc().getUnqualifiedLoc();
+        CurrTL = TL.getNextTypeLoc();
         break;
       }
 
       case TypeLoc::Adjusted:
       case TypeLoc::BTFTagAttributed: {
-        CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+        CurrTL = CurrTL.getNextTypeLoc();
         break;
       }
 
       case TypeLoc::DependentAddressSpace: {
         auto TL = CurrTL.castAs<DependentAddressSpaceTypeLoc>();
         fillDependentAddressSpaceTypeLoc(TL, D.getTypeObject(i).getAttrs());
-        CurrTL = TL.getPointeeTypeLoc().getUnqualifiedLoc();
+        CurrTL = TL.getPointeeTypeLoc();
         break;
       }
 
@@ -6709,8 +6711,27 @@ GetTypeSourceInfoForDeclarator(TypeProcessingState &State,
       }
     }
 
+    if (QualifiedTypeLoc QTL = CurrTL.getAs<QualifiedTypeLoc>()) {
+      auto &Chunk = D.getTypeObject(i);
+      // Qualifiers here can come from pointer or member-pointer declarators.
+      switch (Chunk.Kind) {
+      case DeclaratorChunk::Pointer:
+        // Qualifiers always come after the * which we're qualifying.
+        QTL.setQualifierLocations(/*FirstBeforeType=*/SourceLocation(),
+                                  /*LastAfterType=*/Chunk.Ptr.LastQualLoc);
+        break;
+      case DeclaratorChunk::MemberPointer:
+        // FIXME: track qualifier locations in member pointer declarators.
+        QTL.setQualifierLocations(/*FirstBeforeType=*/SourceLocation(),
+                                  /*LastAfterType=*/SourceLocation());
+        break;
+      default:
+        llvm_unreachable("did not expect qualifiers here");
+        }
+    }
+
     DeclaratorLocFiller(S.Context, State, D.getTypeObject(i)).Visit(CurrTL);
-    CurrTL = CurrTL.getNextTypeLoc().getUnqualifiedLoc();
+    CurrTL = CurrTL.getNextTypeLoc();
   }
 
   // If we have different source information for the return type, use

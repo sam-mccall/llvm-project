@@ -28,6 +28,7 @@
 #include "clang/Basic/ExceptionSpecificationType.h"
 #include "clang/Basic/Lambda.h"
 #include "clang/Basic/OperatorKinds.h"
+#include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Lex/Token.h"
 #include "clang/Sema/Ownership.h"
@@ -402,6 +403,9 @@ private:
   // SourceLocation info.  These are null if the item wasn't specified or if
   // the setting was synthesized.
   SourceRange Range;
+  // For QualifiedTypeLoc
+  SourceLocation FirstTQBeforeType;
+  SourceLocation LastTQAfterType;
 
   SourceLocation StorageClassSpecLoc, ThreadStorageClassSpecLoc;
   SourceRange TSWRange;
@@ -581,6 +585,10 @@ public:
 
   /// getTypeQualifiers - Return a set of TQs.
   unsigned getTypeQualifiers() const { return TypeQualifiers; }
+  SourceLocation getFirstQualifierBeforeType() const {
+    return FirstTQBeforeType;
+  }
+  SourceLocation getLastQualifierAfterType() const { return LastTQAfterType; }
   SourceLocation getConstSpecLoc() const { return TQ_constLoc; }
   SourceLocation getRestrictSpecLoc() const { return TQ_restrictLoc; }
   SourceLocation getVolatileSpecLoc() const { return TQ_volatileLoc; }
@@ -591,6 +599,8 @@ public:
   /// Clear out all of the type qualifiers.
   void ClearTypeQualifiers() {
     TypeQualifiers = 0;
+    FirstTQBeforeType = SourceLocation();
+    LastTQAfterType = SourceLocation();
     TQ_constLoc = SourceLocation();
     TQ_restrictLoc = SourceLocation();
     TQ_volatileLoc = SourceLocation();
@@ -1248,6 +1258,9 @@ struct DeclaratorChunk {
     /// The location of the __unaligned-qualifier, if any.
     SourceLocation UnalignedQualLoc;
 
+    /// The location of the last qualifier modelled by QualType.
+    SourceLocation LastQualLoc;
+
     void destroy() {
     }
   };
@@ -1613,12 +1626,11 @@ struct DeclaratorChunk {
   ParsedAttributesView &getAttrs() { return AttrList; }
 
   /// Return a DeclaratorChunk for a pointer.
-  static DeclaratorChunk getPointer(unsigned TypeQuals, SourceLocation Loc,
-                                    SourceLocation ConstQualLoc,
-                                    SourceLocation VolatileQualLoc,
-                                    SourceLocation RestrictQualLoc,
-                                    SourceLocation AtomicQualLoc,
-                                    SourceLocation UnalignedQualLoc) {
+  static DeclaratorChunk
+  getPointer(unsigned TypeQuals, SourceLocation Loc,
+             SourceLocation ConstQualLoc, SourceLocation VolatileQualLoc,
+             SourceLocation RestrictQualLoc, SourceLocation AtomicQualLoc,
+             SourceLocation UnalignedQualLoc, SourceLocation LastQualLoc) {
     DeclaratorChunk I;
     I.Kind                = Pointer;
     I.Loc                 = Loc;
@@ -1629,6 +1641,7 @@ struct DeclaratorChunk {
     I.Ptr.RestrictQualLoc = RestrictQualLoc;
     I.Ptr.AtomicQualLoc   = AtomicQualLoc;
     I.Ptr.UnalignedQualLoc = UnalignedQualLoc;
+    I.Ptr.LastQualLoc = LastQualLoc;
     return I;
   }
 
